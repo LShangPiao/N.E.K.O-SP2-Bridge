@@ -15,6 +15,9 @@ obj/
 # 下载来的工具链与模组加载器（Roslyn / dnlib / BepInEx），按 tools/README.md 自行获取
 tools/dl/
 tools/bepinex-payload/
+# Roslyn 编译器整套约 21 MB，属于第三方下载物，不进仓库。
+# 需要时按 tools/README.md 放进 tools/roslyn/ 即可（build.ps1 会自动找到）。
+tools/roslyn/
 
 # 调试截图与抓取的样本
 tools/*.png

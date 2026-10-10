@@ -56,6 +56,12 @@ namespace NekoSp2Bridge
                 root.Set("engines", DumpEngines());
                 root.Set("terrain_count", Terrain.activeTerrains != null ? Terrain.activeTerrains.Length : 0);
 
+                // 关键补充：GameAccess 用的类型名是当初推断的，实机可能对不上。
+                // 这里把游戏程序集里所有名字像「场景/飞行器/控制」的类型全列出来，
+                // 一次就能拿到真名，不用再猜。
+                root.Set("type_candidates", DumpTypeCandidates());
+                root.Set("game_assemblies", DumpAssemblyNames());
+
                 cached = BridgeJson.Serialize(root);
             }
             catch (Exception ex)
@@ -99,6 +105,97 @@ namespace NekoSp2Bridge
             }
             obj.Set("members", members);
             return obj;
+        }
+
+        /// <summary>
+        /// 把游戏程序集里名字像「场景 / 飞行器 / 玩家 / 控制」的类型全列出来。
+        /// GameAccess 里那几个类型名是当初推断的，实机不一定对得上；
+        /// 有了这份清单就能直接改成真名。
+        /// </summary>
+        private static List<JsonObj> DumpTypeCandidates()
+        {
+            List<JsonObj> list = new List<JsonObj>();
+            string[] hints = { "FlightScene", "Aircraft", "Controls", "Player", "Flight", "Craft", "Plane" };
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (int a = 0; a < assemblies.Length; a++)
+            {
+                Type[] types;
+                try
+                {
+                    types = assemblies[a].GetTypes();
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    types = ex.Types;
+                }
+                catch
+                {
+                    continue;
+                }
+                if (types == null)
+                {
+                    continue;
+                }
+                for (int t = 0; t < types.Length && list.Count < 300; t++)
+                {
+                    Type type = types[t];
+                    if (type == null)
+                    {
+                        continue;
+                    }
+                    string full = type.FullName;
+                    if (full == null)
+                    {
+                        continue;
+                    }
+                    bool hit = false;
+                    for (int h = 0; h < hints.Length; h++)
+                    {
+                        if (full.IndexOf(hints[h], StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (!hit)
+                    {
+                        continue;
+                    }
+                    string ns = type.Namespace ?? "";
+                    // 跳过 Unity / 系统自带的一大堆无关类型
+                    if (ns.StartsWith("Unity") || ns.StartsWith("System") || ns.StartsWith("Microsoft")
+                        || ns.StartsWith("Mono") || ns.StartsWith("BepInEx") || ns.StartsWith("HarmonyLib"))
+                    {
+                        continue;
+                    }
+                    JsonObj obj = new JsonObj();
+                    obj.Set("full_name", full);
+                    obj.Set("assembly", assemblies[a].GetName().Name);
+                    obj.Set("is_mono_behaviour", typeof(MonoBehaviour).IsAssignableFrom(type));
+                    list.Add(obj);
+                }
+            }
+            return list;
+        }
+
+        private static List<JsonObj> DumpAssemblyNames()
+        {
+            List<JsonObj> list = new List<JsonObj>();
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < assemblies.Length && list.Count < 80; i++)
+            {
+                JsonObj obj = new JsonObj();
+                try
+                {
+                    obj.Set("name", assemblies[i].GetName().Name);
+                }
+                catch
+                {
+                    continue;
+                }
+                list.Add(obj);
+            }
+            return list;
         }
 
         private static List<JsonObj> DumpEngines()

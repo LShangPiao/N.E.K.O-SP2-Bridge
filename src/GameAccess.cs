@@ -314,27 +314,51 @@ namespace NekoSp2Bridge
     public static class GameAccess
     {
         // ── 确认过的类型名 ──────────────────────────────────────────────
+        // 以下四个都已用 /probe 在 SP2 v0.7.8.103 实机确认（见 docs/probe-*.json）
         public const string SceneTypeName = "Assets.Scripts.Flight.FlightSceneScript";
         public const string AircraftTypeName = "Assets.Scripts.Craft.AircraftScript";
 
-        // ── 候选名（未确认，按可能性排序）────────────────────────────────
+        // ── 候选名 ──────────────────────────────────────────────────────
+        //
+        // 排在前面的都是**实机 probe 确认过的真名**（SP2 v0.7.8.103），
+        // 后面的旧候选名保留着，用于兼容其它版本。
+        //
+        // ⚠️ 这里踩过一个坑：Pitch/Roll 这类"想当然"的名字在 AircraftScript 上
+        // 并不存在，真名是 PitchAngle/RollAngle。候选名写错不会报错，
+        // 只会静默返回 null，然后被兜底逻辑填成 0 —— 外面看起来像"读到了 0"。
+        // 所以以后加字段，**一定先用 /probe 核对真名**，不要凭直觉写。
         public static readonly string[] AltitudeNames = { "Altitude", "AltitudeMsl", "AltitudeMSL", "SeaLevelAltitude", "AltitudeASL" };
-        public static readonly string[] AirspeedNames = { "Airspeed", "AirSpeed", "IndicatedAirspeed", "IndicatedAirSpeed", "Ias", "IAS", "TrueAirspeed", "TrueAirSpeed" };
+        public static readonly string[] AltitudeAglNames = { "AltitudeAgl", "AltitudeAGL", "AltitudeAboveGround", "RadarAltitude" };
+        public static readonly string[] AirspeedNames = { "IAS", "AirSpeed", "Airspeed", "IndicatedAirspeed", "IndicatedAirSpeed", "Ias", "TrueAirspeed", "TrueAirSpeed", "TAS" };
+        public static readonly string[] GroundSpeedNames = { "GS", "GroundSpeed", "Speed" };
         public static readonly string[] MachNames = { "Mach", "MachNumber", "MachSpeed" };
         public static readonly string[] AoANames = { "AngleOfAttack", "Aoa", "AOA", "Alpha", "AttackAngle" };
-        public static readonly string[] SideslipNames = { "Sideslip", "SideSlip", "Beta", "SideslipAngle" };
+        public static readonly string[] SideslipNames = { "AngleOfSlip", "Sideslip", "SideSlip", "Beta", "SideslipAngle" };
+        public static readonly string[] PitchNames = { "PitchAngle", "Pitch", "PitchDeg", "AngleOfPitch" };
+        public static readonly string[] RollNames = { "RollAngle", "Roll", "BankAngle", "AngleOfRoll" };
+        public static readonly string[] HeadingNames = { "Heading", "HeadingAngle", "Yaw", "Compass" };
+        public static readonly string[] PitchRateNames = { "PitchRate", "PitchSpeed" };
+        public static readonly string[] RollRateNames = { "RollRate", "RollSpeed" };
+        public static readonly string[] YawRateNames = { "YawRate", "YawSpeed" };
+        public static readonly string[] LatitudeNames = { "Latitude", "Lat" };
+        public static readonly string[] LongitudeNames = { "Longitude", "Lon", "Long" };
         public static readonly string[] GForceNames = { "GForce", "GForceZ", "GLoad", "LoadFactor", "AccelerationG" };
+        public static readonly string[] VerticalGNames = { "VerticalG", "GForceVertical" };
         public static readonly string[] StalledNames = { "Stalled", "IsStalled", "Stalling", "IsStalling" };
         public static readonly string[] StallWarnNames = { "StallWarning", "IsStallWarning", "StallWarn" };
         public static readonly string[] OnGroundNames = { "OnGround", "IsGrounded", "Grounded", "IsOnGround", "WheelsOnGround", "TouchingGround" };
         public static readonly string[] CrashedNames = { "Crashed", "IsCrashed", "IsDestroyed", "Destroyed", "IsDead" };
         public static readonly string[] FuelNames = { "Fuel", "FuelRemaining", "FuelMass", "FuelLevel", "RemainingFuel" };
         public static readonly string[] FuelCapacityNames = { "FuelCapacity", "MaxFuel", "FuelCapacityMass", "TotalFuel" };
-        public static readonly string[] FuelPercentNames = { "FuelPercent", "FuelPercentage", "FuelFraction", "FuelLevelPercent" };
+        // FuelProportion 是实机确认的真名（0-1）。
+        public static readonly string[] FuelPercentNames = { "FuelProportion", "FuelPercent", "FuelPercentage", "FuelFraction", "FuelLevelPercent" };
         public static readonly string[] GearDownNames = { "GearDown", "IsGearDown", "LandingGearDown", "GearDeployed", "IsGearDeployed" };
         public static readonly string[] MassNames = { "Mass", "TotalMass", "Weight" };
         public static readonly string[] IntegrityNames = { "Integrity", "IntegrityPercent", "Health", "HealthPercent", "Durability" };
         public static readonly string[] NameNames = { "Name", "DisplayName", "CraftName", "VehicleName" };
+        public static readonly string[] TargetDistanceNames = { "TargetDistance", "DistanceToTarget" };
+        public static readonly string[] TargetLockedNames = { "TargetLocked", "IsTargetLocked", "Locked" };
+        public static readonly string[] TargetSelectedNames = { "TargetSelected", "HasTarget" };
 
         private const float RefreshInterval = 0.5f;
         private static float nextResolve;

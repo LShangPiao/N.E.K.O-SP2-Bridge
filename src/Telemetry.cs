@@ -155,36 +155,72 @@ namespace NekoSp2Bridge
             object aircraft = GameAccess.Aircraft;
             object player = GameAccess.Player;
 
-            // ── 位置与速度 ────────────────────────────────────────────────
+            // ── 速度 ──────────────────────────────────────────────────────
             Vector3? velocity = FirstVector(aircraft, player);
+
+            // ── 高度 ──────────────────────────────────────────────────────
+            //
+            // 优先读游戏自己的 Altitude（海拔）与 AltitudeAgl（离地）。
+            // 之前直接用 Transform.position.y 当海拔 —— 实测在停机坪上得到
+            // -1005 m，而游戏 UI 与 AircraftScript.Altitude 都是 4.2 m：
+            // SP2 的世界原点不在海平面，世界坐标 y 根本不是海拔。
+            float? altitudeMsl = Reflect.GetFloat(aircraft, GameAccess.AltitudeNames);
+            float? agl = Reflect.GetFloat(aircraft, GameAccess.AltitudeAglNames);
+            float? terrainHeight = null;
+
             Vector3 position = transform != null ? transform.position : new Vector3();
             bool hasPosition = transform != null;
 
-            if (hasPosition)
+            if (!altitudeMsl.HasValue && hasPosition)
             {
-                flight.Set("altitude_msl", position.y);
+                // 兜底：老版本可能没有 Altitude，只能先拿世界坐标顶着（会不准）。
+                altitudeMsl = position.y;
+                derived.Set("altitude_msl", true);
             }
+            flight.SetIfNotNull("altitude_msl", altitudeMsl);
 
-            float? agl = null;
-            float? terrainHeight = null;
-            if (hasPosition)
+            if (!agl.HasValue && hasPosition)
             {
                 float ground = SampleTerrainHeight(position);
                 if (!float.IsNaN(ground))
                 {
                     terrainHeight = ground;
                     agl = position.y - ground;
-                    flight.Set("altitude_agl", agl.Value);
-                    flight.Set("terrain_height", ground);
                     derived.Set("altitude_agl", true);
                 }
             }
+            else if (agl.HasValue && hasPosition)
+            {
+                // 有了真实 AGL，地形高度反推出来仅供展示
+                float ground = SampleTerrainHeight(position);
+                if (!float.IsNaN(ground))
+                {
+                    terrainHeight = ground;
+                }
+            }
+            flight.SetIfNotNull("altitude_agl", agl);
+            flight.SetIfNotNull("terrain_height", terrainHeight);
 
             if (velocity.HasValue)
             {
                 Vector3 v = velocity.Value;
-                flight.Set("ground_speed", v.magnitude);
+                // 地速优先用游戏自己的 GS（实机确认真名），读不到才用速度模长。
+                float? gsDirect = Reflect.GetFloat(aircraft, GameAccess.GroundSpeedNames);
+                if (gsDirect.HasValue)
+                {
+                    flight.Set("ground_speed", gsDirect.Value);
+                }
+                else
+                {
+                    flight.Set("ground_speed", v.magnitude);
+                    derived.Set("ground_speed", true);
+                }
                 flight.Set("vertical_speed", v.y);
+            }
+            else
+            {
+                float? gsDirect = Reflect.GetFloat(aircraft, GameAccess.GroundSpeedNames);
+                flight.SetIfNotNull("ground_speed", gsDirect);
             }
 
             // ── 空速：优先读游戏字段，读不到才用速度模长推算 ────────────────
@@ -214,29 +250,59 @@ namespace NekoSp2Bridge
             flight.SetIfNotNull("mach", mach);
 
             // ── 姿态 ─────────────────────────────────────────────────────
-            if (transform != null)
+            //
+            // 优先用游戏自己的 PitchAngle/RollAngle/Heading（实机 probe 确认真名），
+            // 读不到才退回由 Transform 推算。之前只用推算，实测在停机坪上
+            // pitch/roll/heading 恒为 0 —— 因为 Transform 那时还没稳定。
+            float? pitchDirect = Reflect.GetFloat(aircraft, GameAccess.PitchNames);
+            float? rollDirect = Reflect.GetFloat(aircraft, GameAccess.RollNames);
+            float? headingDirect = Reflect.GetFloat(aircraft, GameAccess.HeadingNames);
+
+            bool attitudeDerived = false;
+            if (!pitchDirect.HasValue || !rollDirect.HasValue || !headingDirect.HasValue)
             {
-                Vector3 forward = transform.forward;
-                Vector3 right = transform.right;
-                Vector3 up = transform.up;
-
-                float pitch = Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f)) * Mathf.Rad2Deg;
-                // 右倾为正：右翼下沉时 right.y 变负，所以取反。
-                float roll = -Mathf.Atan2(right.y, up.y) * Mathf.Rad2Deg;
-                float heading = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
-                if (heading < 0f)
+                if (transform != null)
                 {
-                    heading += 360f;
-                }
+                    Vector3 forward = transform.forward;
+                    Vector3 right = transform.right;
+                    Vector3 up = transform.up;
 
-                flight.Set("pitch", pitch);
-                flight.Set("roll", roll);
-                flight.Set("heading", heading);
+                    if (!pitchDirect.HasValue)
+                    {
+                        pitchDirect = Mathf.Asin(Mathf.Clamp(forward.y, -1f, 1f)) * Mathf.Rad2Deg;
+                    }
+                    if (!rollDirect.HasValue)
+                    {
+                        // 右倾为正：右翼下沉时 right.y 变负，所以取反。
+                        rollDirect = -Mathf.Atan2(right.y, up.y) * Mathf.Rad2Deg;
+                    }
+                    if (!headingDirect.HasValue)
+                    {
+                        float h = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
+                        if (h < 0f)
+                        {
+                            h += 360f;
+                        }
+                        headingDirect = h;
+                    }
+                    attitudeDerived = true;
+                }
+            }
+
+            flight.SetIfNotNull("pitch", pitchDirect);
+            flight.SetIfNotNull("roll", rollDirect);
+            flight.SetIfNotNull("heading", headingDirect);
+            if (attitudeDerived)
+            {
                 derived.Set("attitude", true);
             }
 
-            // ── 迎角 / 侧滑：由速度与机体朝向算出来 ────────────────────────
-            if (transform != null && velocity.HasValue)
+            // ── 迎角 / 侧滑 ───────────────────────────────────────────────
+            // 同样优先读游戏字段（AngleOfAttack / AngleOfSlip）。
+            float? aoaDirect = Reflect.GetFloat(aircraft, GameAccess.AoANames);
+            float? slipDirect = Reflect.GetFloat(aircraft, GameAccess.SideslipNames);
+            bool aoaDerived = false;
+            if ((!aoaDirect.HasValue || !slipDirect.HasValue) && transform != null && velocity.HasValue)
             {
                 Vector3 local = transform.InverseTransformDirection(velocity.Value);
                 if (local.sqrMagnitude > 0.01f)
@@ -244,14 +310,24 @@ namespace NekoSp2Bridge
                     float forwardAxis = local.z;
                     if (Mathf.Abs(forwardAxis) > 0.001f)
                     {
-                        float aoa = Mathf.Atan2(-local.y, forwardAxis) * Mathf.Rad2Deg;
-                        float sideslip = Mathf.Atan2(local.x, forwardAxis) * Mathf.Rad2Deg;
-                        flight.Set("aoa", aoa);
-                        flight.Set("sideslip", sideslip);
-                        derived.Set("aoa", true);
-                        derived.Set("sideslip", true);
+                        if (!aoaDirect.HasValue)
+                        {
+                            aoaDirect = Mathf.Atan2(-local.y, forwardAxis) * Mathf.Rad2Deg;
+                        }
+                        if (!slipDirect.HasValue)
+                        {
+                            slipDirect = Mathf.Atan2(local.x, forwardAxis) * Mathf.Rad2Deg;
+                        }
+                        aoaDerived = true;
                     }
                 }
+            }
+            flight.SetIfNotNull("aoa", aoaDirect);
+            flight.SetIfNotNull("sideslip", slipDirect);
+            if (aoaDerived)
+            {
+                derived.Set("aoa", true);
+                derived.Set("sideslip", true);
             }
 
             // ── 过载 G：由速度变化率推算（法向分量）────────────────────────
@@ -374,6 +450,49 @@ namespace NekoSp2Bridge
                 root.Set("mission_time", missionTime.Value);
             }
 
+            // ── 位置（经纬度）─────────────────────────────────────────────
+            // probe 实测 AircraftScript 上有 Latitude/Longitude，直接读给出来，
+            // 比只给一个世界坐标有用得多。
+            JsonObj positionBlock = new JsonObj();
+            float? lat = Reflect.GetFloat(aircraft, GameAccess.LatitudeNames);
+            float? lon = Reflect.GetFloat(aircraft, GameAccess.LongitudeNames);
+            positionBlock.SetIfNotNull("latitude", lat);
+            positionBlock.SetIfNotNull("longitude", lon);
+            if (lat.HasValue || lon.HasValue)
+            {
+                root.Set("position", positionBlock);
+            }
+
+            // ── 燃油比例 ─────────────────────────────────────────────────
+            // FuelProportion 是 0-1（实测满油为 1），统一换算成百分比。
+            float? fuelProportion = Reflect.GetFloat(aircraft, GameAccess.FuelPercentNames);
+            if (fuelProportion.HasValue)
+            {
+                float percent = fuelProportion.Value <= 1.0001f ? fuelProportion.Value * 100f : fuelProportion.Value;
+                root.Set("fuel_percent", percent);
+            }
+
+            // ── 过载 ─────────────────────────────────────────────────────
+            float? verticalG = Reflect.GetFloat(aircraft, GameAccess.VerticalGNames);
+            if (verticalG.HasValue)
+            {
+                root.Set("vertical_g", verticalG.Value);
+            }
+
+            // ── 目标锁定 ─────────────────────────────────────────────────
+            JsonObj target = new JsonObj();
+            bool? locked = Reflect.GetBool(aircraft, GameAccess.TargetLockedNames);
+            bool? selected = Reflect.GetBool(aircraft, GameAccess.TargetSelectedNames);
+            float? targetDistance = Reflect.GetFloat(aircraft, GameAccess.TargetDistanceNames);
+            bool hasTarget = (locked.HasValue && locked.Value) || (selected.HasValue && selected.Value);
+            target.Set("locked", hasTarget);
+            if (locked.HasValue)
+            {
+                target.Set("locking", locked.Value);
+            }
+            target.SetIfNotNull("distance_m", targetDistance);
+            root.Set("target", target);
+
             root.Set("flight", flight);
             root.Set("controls", controls);
             root.Set("derived", derived);
@@ -415,6 +534,12 @@ namespace NekoSp2Bridge
             if (!fuelPercent.HasValue && fuelCurrent.HasValue && fuelCapacity.HasValue && fuelCapacity.Value > 0f)
             {
                 fuelPercent = fuelCurrent.Value / fuelCapacity.Value * 100f;
+            }
+            else if (fuelPercent.HasValue && fuelPercent.Value <= 1.0001f)
+            {
+                // FuelProportion（实机确认真名）是 0-1 比例，统一换算成百分比。
+                // 用 <=1 判定：真值 1 表示满油，若按百分比读会变成"1%"。
+                fuelPercent = fuelPercent.Value * 100f;
             }
             fuel.SetIfNotNull("current_kg", fuelCurrent);
             fuel.SetIfNotNull("capacity_kg", fuelCapacity);

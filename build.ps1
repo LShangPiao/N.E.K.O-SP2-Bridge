@@ -98,6 +98,7 @@ $refs = @(
     "UnityEngine.dll",
     "UnityEngine.CoreModule.dll",
     "UnityEngine.PhysicsModule.dll",
+    "UnityEngine.TerrainModule.dll",
     "UnityEngine.IMGUIModule.dll",
     "UnityEngine.UIModule.dll",
     "UnityEngine.UI.dll"

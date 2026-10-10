@@ -27,25 +27,46 @@
 
 > 模组只提供 `GET` 接口，代码里不存在任何修改游戏状态的路径。
 
-## 现状：请先读这一段 ⚠️
+## 现状：已在实机跑通 ✅
 
-**这个模组还没在实机上跑过。** 开发机上没有安装《简单飞机2》，
-所以它能做到的是：
+**这个模组已经在《简单飞机2》v0.7.8.103 上实测通过**，链路是：
 
-- ✅ 类型名来自社区已验证的开源 SP2 模组（`Assets.Scripts.Flight.FlightSceneScript`、
-  `Assets.Scripts.Craft.AircraftScript` 等），不是凭空猜的
-- ✅ 架构、线程模型、只读约束与姊妹项目
-  `N.E.K.O-Juno-bridge` / `N.E.K.O-KSP-bridge` 完全一致（那两个已在实机验证）
-- ✅ 所有取值都走反射 + 候选名，试不到就返回 `null`，**不会因为字段名不对而崩**
-- ❌ 未经编译验证（缺游戏程序集）
-- ❌ 空速、迎角、油量、起落架等字段的**确切名字**尚未确认
+```
+N.E.K.O. 插件  ←HTTP/JSON(21580)←  SP2-Bridge  ←反射←  SimplePlanes 2
+```
 
-**要让它完整，只差一次实机运行**：装 DEBUG 版 → 打开 `/probe` →
-把真实的字段名填进 `src/GameAccess.cs` 的候选名数组 → 重新编译。
-详细步骤见 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)。
+实机确认的情况：
 
-在那之前，姿态、位置、速度、迎角、过载、离地高度这些**由几何关系推算**的字段
-就已经能用了（推算出来的会在返回里用 `derived` 标出来）。
+- ✅ BepInEx 5（Mono x64）能正常加载本模组，`/ping` 与 `/state` 均返回正常
+- ✅ 四个关键类型名**全部确认无误**：`Assets.Scripts.Flight.FlightSceneScript`、
+  `Assets.Scripts.Flight.FlightScenePlayer`、`Assets.Scripts.Craft.AircraftScript`、
+  `Assets.Scripts.Craft.AircraftControls`
+- ✅ 高度、空速、地速、马赫、姿态（俯仰/滚转/航向）、迎角、侧滑、过载、
+  油量比例、经纬度、操纵面状态**全部读到真实值**
+- ✅ Release 构建会把 `/probe` 诊断端点整块条件编译掉（已用字符串扫描确认）
+
+### 实机踩到的坑（已修）
+
+| 字段 | 之前 | 现在 | 原因 |
+| --- | --- | --- | --- |
+| `altitude_msl` | `-1005 m` | `4.21 m` | 原来拿 `Transform.position.y` 当海拔；SP2 的世界原点不在海平面 |
+| `altitude_agl` | `-1257 m` | `1.58 m` | 同上 |
+| `pitch` / `roll` / `heading` | 恒为 `0` | `1.24 / 0.17 / 44.8` | 原来只会由 `Transform` 推算，且候选名写成了不存在的 `Pitch`/`Roll` |
+| 迎角 / 侧滑 | 推算值 | 读游戏字段 | 真名是 `AngleOfAttack` / `AngleOfSlip`（**不是** `Sideslip`） |
+| 油量 | 读不到 | `100%` | 真名是 `FuelProportion`（0-1 比例，**不是** 0-100） |
+| 地速 | 推算 | `GS` 字段 | 真名是 `GS` |
+| 经纬度、过载、目标 | 未输出 | 已输出 | 真名 `Latitude`/`Longitude`/`VerticalG`/`TargetLocked` |
+
+> **教训**：候选名写错**不会报错**，只会静默返回 `null`，然后被兜底逻辑填成 `0` ——
+> 从外面看像是"读到了 0"。所以新增字段一定要先用 `/probe` 核对真名，
+> 不要凭直觉写（`Pitch` vs `PitchAngle` 就是这么栽的）。
+
+### 已知问题
+
+- `aoa` / `sideslip` 在停机坪上偶尔给出异常大的角度（如 `147°`）。
+  游戏字段本身在小速度下就不稳定，接入方对这两个值应保持怀疑。
+- 老版本（如 1.5.x）的反射链可能不同 —— `docs/probe-*.json` 只覆盖了
+  v0.7.8.103；其他版本请先跑 `/probe` 核对。
 
 ## 为什么用 BepInEx
 
@@ -181,6 +202,3 @@ Controls                                 .Flaps / .Roll / .Pitch / .Yaw / .Brake
 ## 许可证
 
 GNU General Public License v3.0，见 [LICENSE](LICENSE)。
-
-星河拓航Studio (Galaxy Exploration Studio) · 猫娘计划
-<https://xhth.top/>
