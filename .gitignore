@@ -1,0 +1,27 @@
+# 编译产物
+dist/
+
+# 游戏程序集引用（体积大，且属于游戏本体，不进仓库）
+refs/*
+# 但说明文件要留着，否则没人知道那些 DLL 从哪来
+# 注意：必须写成 refs/* 而不是 refs/ —— 后者会把整个目录排除掉，
+# 里面的 ! 取反规则就不再生效了。
+!refs/README.md
+
+# 中间产物
+bin/
+obj/
+
+# 下载来的工具链与模组加载器（Roslyn / dnlib / BepInEx），按 tools/README.md 自行获取
+tools/dl/
+tools/bepinex-payload/
+
+# 调试截图与抓取的样本
+tools/*.png
+
+# 运行日志
+*.log
+
+# 编辑器
+.vs/
+.vscode/
