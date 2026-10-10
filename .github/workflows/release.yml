@@ -1,0 +1,75 @@
+name: Release
+
+# 打 v* tag 时自动构建并发布。
+#
+# 注意：SP2-Bridge 的编译依赖**游戏本体的程序集**（SimplePlanes 2_Data/Managed/*.dll），
+# 那些是有版权的游戏文件，不能塞进 CI。所以这里不重新编译，
+# 而是用仓库里的源码打包 —— 产物由开发者本机 build.ps1 产出后提交到 Release。
+#
+# 因此这个 workflow 的职责是：把源码 + 文档 + 图标打成一个源码包发布，
+# 并附上本机编译好的 Sp2Bridge.dll（从 dist/ 取，如果存在的话）。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check plugin version matches tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "tag version: $TAG"
+          if [ -f README.md ]; then
+            grep -n "$TAG" README.md || echo "(README 里没写版本号，跳过核对)"
+          fi
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          if [ -f dist/Sp2Bridge.dll ]; then
+            cp dist/Sp2Bridge.dll out/
+            echo "已附上编译好的 Sp2Bridge.dll"
+          else
+            echo "::warning::dist/Sp2Bridge.dll 不存在 —— 本仓库的 DLL 由本机编译，未提交进 git。"
+            echo "这一版 Release 只含源码。使用者需自行 build.ps1，或到 README 指明的链接取 DLL。" > out/BUILD-FROM-SOURCE.txt
+          fi
+          if [ -d assets ]; then cp -r assets out/; fi
+          ls -la out
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/**
+          generate_release_notes: true
+          body: |
+            ## N.E.K.O-SP2-Bridge ${{ github.ref_name }}
+
+            《简单飞机2 SimplePlanes 2》的**只读**飞行遥测桥接。
+
+            ### 定位
+
+            **只读。** 不发控制指令、不动操纵面、不碰油门。模组只提供 `GET` 接口。
+
+            ### 安装
+
+            1. 先装 **BepInEx 5（Mono x64）** 到游戏根目录
+            2. 把 `Sp2Bridge.dll` 放进 `BepInEx/plugins/N.E.K.O-SP2-Bridge/`
+            3. 启动游戏，访问 <http://127.0.0.1:21580/ping>
+
+            > 本 Release 由 CI 打包源码；`Sp2Bridge.dll` 需要在本机用 `build.ps1` 编译
+            > （它引用游戏本体的程序集，无法在 CI 里构建）。
+
+            ### 实测环境
+
+            SimplePlanes 2 **v0.7.8.103** + BepInEx 5.4（Mono x64）。
+            高度、空速、姿态、迎角、过载、油量、经纬度等字段均已实机核对。
