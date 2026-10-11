@@ -20,7 +20,6 @@ namespace NekoSp2Bridge
         private static readonly object Gate = new object();
         private static string path;
         private static bool fileEnabled = true;
-        private static bool headerWritten;
         private static bool consoleEnabled = true;
 
         public static void Init(string directory, string header)
@@ -36,7 +35,6 @@ namespace NekoSp2Bridge
                 path = Path.Combine(directory, "sp2-bridge.log");
                 TruncateIfNeeded();
                 Write(header);
-                headerWritten = true;
             }
             catch
             {
