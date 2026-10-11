@@ -36,3 +36,17 @@ tools/*.png
 # 编辑器
 .vs/
 .vscode/
+
+# 调试截图与抓取的样本（jpg 之前漏了，导致 tools/sfs1.jpg 一直未跟踪）
+tools/*.jpg
+
+# 一次性探测 / 调试脚本，属于本地工具，不进仓库
+tools/sfs_*.ps1
+tools/gh_upload.ps1
+tools/resize_logo.ps1
+tools/reflect.ps1
+tools/ildump.ps1
+tools/strings.ps1
+tools/shot.ps1
+tools/click.ps1
+tools/sp2_input.ps1
