@@ -61,49 +61,62 @@ N.E.K.O. 插件  ←HTTP/JSON(21580)←  SP2-Bridge  ←反射←  SimplePlanes 
 > 从外面看像是"读到了 0"。所以新增字段一定要先用 `/probe` 核对真名，
 > 不要凭直觉写（`Pitch` vs `PitchAngle` 就是这么栽的）。
 
-### 已知问题
-
-- `aoa` / `sideslip` 在停机坪上偶尔给出异常大的角度（如 `147°`）。
-  游戏字段本身在小速度下就不稳定，接入方对这两个值应保持怀疑。
-- 老版本（如 1.5.x）的反射链可能不同 —— `docs/probe-*.json` 只覆盖了
-  v0.7.8.103；其他版本请先跑 `/probe` 核对。
-
-## 为什么用 BepInEx
-
-SP2 还在抢先体验，**官方 modding 支持尚未上线**，没有任何官方扩展点可用。
-
-社区（[SP2FreeCamera](https://github.com/EEEureka/SP2FreeCamera)、
-[SP2 小地图插件](https://github.com/hahaha8459812/simpleplanes2-minimap-plugin) 等）
-已经验证 BepInEx 5 **Mono** 在这款游戏上可用：
-
-- SP2 是 Unity **Mono** 后端（不是 IL2CPP）→ 普通 C# 插件直接就能用
-- BepInEx **不修改任何游戏原文件**，只是在目录里多放几个文件
-- 卸载就是删掉那几个文件
-
-⚠️ 必须下载 **BepInEx 5 Mono Windows x64** 版。IL2CPP 版在这游戏上不工作。
-
 ---
 
 ## 安装
 
-需要 **BepInEx 5（Mono, x64）** + 本插件。
+### 方式一：解压即用（推荐）
 
-```powershell
-# 1. 准备 BepInEx（见 tools/README.md）
-#    下载 BepInEx_win_x64_5.4.23.5.zip 放到 tools\dl\
+从 [Releases](https://github.com/LShangPiao/N.E.K.O-SP2-Bridge/releases) 下载
 
-# 2. 装 BepInEx 运行时 + 插件
-.\install.ps1 -GameDir "E:\Steam\steamapps\common\SimplePlanes 2"
-
-# 或者只编译（不装）
-.\build.ps1 -GameDir "E:\Steam\steamapps\common\SimplePlanes 2"
+```
+N.E.K.O-SP2-Bridge-v0.1.0-win-x64.zip
 ```
 
-改代码之后的常规流程：
+**把 zip 里的东西全部解压到游戏根目录**（和 `SimplePlanes 2.exe` 同级）：
+
+```
+F:\SteamLibrary\steamapps\common\SimplePlanes 2\
+```
+
+解压完成后目录应该是这样：
+
+```
+SimplePlanes 2\
+├── SimplePlanes 2.exe
+├── winhttp.dll              ← 新加的（BepInEx 加载器）
+├── doorstop_config.ini      ← 新加的
+├── .doorstop_version        ← 新加的
+├── BepInEx\                 ← 新加的
+│   ├── core\                    BepInEx 运行时
+│   └── plugins\
+│       └── N.E.K.O-SP2-Bridge\
+│           ├── Sp2Bridge.dll    ← 本模组
+│           ├── README.md
+│           └── LICENSE
+└── SimplePlanes 2_Data\
+```
+
+> **zip 里已经带了 BepInEx 5.4.23.5（Mono x64）**，不用另外下载。
+> 校验和见同目录的 `SHA256SUMS.txt`。
+
+然后**重启游戏**即可。
+
+### 方式二：已经装过 BepInEx
+
+只需把 `BepInEx\plugins\N.E.K.O-SP2-Bridge\` 整个目录拷进游戏的 `BepInEx\plugins\`。
+
+### 方式三：从源码构建
 
 ```powershell
-.\build.ps1 -Install
+# 准备 BepInEx（见 tools/README.md），下载 BepInEx_win_x64_5.4.23.5.zip 放到 tools\dl\
+
+.\build.ps1 -GameDir "F:\SteamLibrary\steamapps\common\SimplePlanes 2"   # 只编译
+.\install.ps1 -GameDir "F:\SteamLibrary\steamapps\common\SimplePlanes 2" # 编译 + 安装
+.\package.ps1 -Version 0.1.0                                             # 打解压即用的 zip
 ```
+
+改代码之后的常规流程：`.\build.ps1 -Install`
 
 ### 验证
 
@@ -113,12 +126,16 @@ SP2 还在抢先体验，**官方 modding 支持尚未上线**，没有任何官
 {"ok":true,"protocol":1,"service":"SP2-Bridge","game":"SimplePlanes 2"}
 ```
 
+### 卸载
+
+删掉 `winhttp.dll`、`doorstop_config.ini`、`.doorstop_version` 和 `BepInEx\` 目录即可。
+**模组从不修改任何游戏原文件。**
+
 ---
 
 ## 接口
 
-协议 v1 的完整定义见
-[`docs/protocol.md`](docs/protocol.md)
+协议 v1 的完整定义见 [`docs/protocol.md`](docs/protocol.md)
 （与插件侧的 `docs/bridge-protocol.md` 是同一份）。
 
 | 路径 | 内容 |
@@ -131,7 +148,7 @@ SP2 还在抢先体验，**官方 modding 支持尚未上线**，没有任何官
 | `GET /all` | 一次性拿全上面四份 |
 | `GET /probe` | 字段探针（仅 DEBUG 构建） |
 
-试试看：
+**这是公用接口** —— 不依赖 N.E.K.O.，任何程序（网页、仪表盘、Discord 机器人）都能读。
 
 ```powershell
 curl http://127.0.0.1:21580/state
@@ -179,10 +196,46 @@ Controls                                 .Flaps / .Roll / .Pitch / .Yaw / .Brake
   消费方因此不会误报超速。这是刻意的。
 - **`navigation.target` 与 `nearest_airport` 目前是 null**：
   SP2 的航路点/机场接口尚未确认，宁缺勿假。
+- **`aoa` / `sideslip` 在停机坪上偶尔给出异常大的角度**（如 `147°`）。
+  游戏字段本身在小速度下就不稳定，接入方对这两个值应保持怀疑。
 - **抢先体验期间 `Game.dll` 会变**：全部走反射，不会因为更新编译不过，
-  最多少读几个字段。
+  最多少读几个字段。`docs/probe-*.json` 只覆盖 v0.7.8.103，其他版本请先跑 `/probe`。
 - **多线程**：采集在主线程，HTTP 在后台线程，后台线程绝不调 Unity API。
   将来若要加控制接口，必须改成「入队 → 主线程执行」。
+
+---
+
+## 为什么用 BepInEx
+
+SP2 还在抢先体验，**官方 modding 支持尚未上线**，没有任何官方扩展点可用。
+
+社区（[SP2FreeCamera](https://github.com/EEEureka/SP2FreeCamera)、
+[SP2 小地图插件](https://github.com/hahaha8459812/simpleplanes2-minimap-plugin) 等）
+已经验证 BepInEx 5 **Mono** 在这款游戏上可用：
+
+- SP2 是 Unity **Mono** 后端（不是 IL2CPP）→ 普通 C# 插件直接就能用
+- BepInEx **不修改任何游戏原文件**，只是在目录里多放几个文件
+- 卸载就是删掉那几个文件
+
+⚠️ 必须用 **BepInEx 5 Mono Windows x64** 版。IL2CPP 版在这游戏上不工作
+（本项目的 release zip 里已经带好了正确的那一份）。
+
+---
+
+## 目录结构
+
+```
+sp2-bridge/
+├── src/                  模组源码（C# 5）
+├── docs/
+│   ├── protocol.md       协议 v1 定义
+│   └── probe-*.json      实机探针抓取的字段样本
+├── tools/                反射探测与构建辅助（见 tools/README.md）
+├── build.ps1             编译（可 -Install / -Debug）
+├── install.ps1           一键装 BepInEx + 本模组
+├── package.ps1           打解压即用的 zip
+└── dist/                 Sp2Bridge.dll
+```
 
 ---
 
@@ -202,3 +255,5 @@ Controls                                 .Flaps / .Roll / .Pitch / .Yaw / .Brake
 ## 许可证
 
 GNU General Public License v3.0，见 [LICENSE](LICENSE)。
+
+*N.E.K.O-SP2-Bridge · 猫娘计划 · GPL-3.0*
