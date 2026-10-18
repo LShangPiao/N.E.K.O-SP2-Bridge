@@ -22,7 +22,11 @@ param(
     [string]$Version = "0.1.0",
     [string]$GameDir = "",
     [string]$OutDir = "",
-    [switch]$Debug
+    [switch]$Debug,
+    # Skip build.ps1 and package whatever is already in dist\.
+    # CI uses this: compiling needs the game's own assemblies, which cannot
+    # be shipped to a runner, so the DLL is committed to the repo instead.
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,8 +35,12 @@ $PluginName = "N.E.K.O-SP2-Bridge"
 $DllName = "Sp2Bridge.dll"
 
 # --- 1) build ---------------------------------------------------------------
-& (Join-Path $Root "build.ps1") -GameDir $GameDir -Debug:$Debug
-if ($LASTEXITCODE -ne 0) { throw "build failed" }
+if ($SkipBuild) {
+    Write-Host "[package] -SkipBuild: using the existing DLL in dist\"
+} else {
+    & (Join-Path $Root "build.ps1") -GameDir $GameDir -Debug:$Debug
+    if ($LASTEXITCODE -ne 0) { throw "build failed" }
+}
 
 $Dll = Join-Path $Root "dist\$DllName"
 if (-not (Test-Path -LiteralPath $Dll)) { throw "missing build output: $Dll" }

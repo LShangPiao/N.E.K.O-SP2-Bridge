@@ -1,55 +1,80 @@
 name: Release
 
-# 打 v* tag 时自动构建并发布。
+# 打 v* tag 时自动构建「解压即用」的分发包。
 #
-# 注意：SP2-Bridge 的编译依赖**游戏本体的程序集**（SimplePlanes 2_Data/Managed/*.dll），
-# 那些是有版权的游戏文件，不能塞进 CI。所以这里不重新编译，
-# 而是用仓库里的源码打包 —— 产物由开发者本机 build.ps1 产出后提交到 Release。
+# 为什么不在 CI 里跑 build.ps1 编译：
+# 本模组编译时引用**游戏本体的程序集**（SimplePlanes 2_Data/Managed/*.dll），
+# 那些是有版权的游戏文件，不能放进 runner。所以 Sp2Bridge.dll 由开发者本机
+# 编译后**提交进仓库**（见 .gitignore 的 !dist/Sp2Bridge.dll），
+# CI 用 package.ps1 -SkipBuild 直接拿它打包。
 #
-# 因此这个 workflow 的职责是：把源码 + 文档 + 图标打成一个源码包发布，
-# 并附上本机编译好的 Sp2Bridge.dll（从 dist/ 取，如果存在的话）。
+# BepInEx 本体则是公开可下载的，CI 会拉下来一起打进 zip ——
+# 这正是「解压即用」的关键。
 
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "要打包的版本号（不带前缀 v）"
+        required: false
 
 permissions:
   contents: write
 
+env:
+  BEPINEX_URL: https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.5/BepInEx_win_x64_5.4.23.5.zip
+
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check plugin version matches tag
+      - name: Resolve version
+        id: ver
+        shell: pwsh
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          echo "tag version: $TAG"
-          if [ -f README.md ]; then
-            grep -n "$TAG" README.md || echo "(README 里没写版本号，跳过核对)"
-          fi
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $v = "${{ github.ref_name }}".TrimStart("v")
+          } else {
+            $v = "${{ github.event.inputs.version }}"
+          }
+          if (-not $v) { $v = "0.0.0" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "packaging version $v"
 
-      - name: Collect artifacts
+      - name: Fetch BepInEx payload
+        shell: pwsh
         run: |
-          mkdir -p out
-          if [ -f dist/Sp2Bridge.dll ]; then
-            cp dist/Sp2Bridge.dll out/
-            echo "已附上编译好的 Sp2Bridge.dll"
-          else
-            echo "::warning::dist/Sp2Bridge.dll 不存在 —— 本仓库的 DLL 由本机编译，未提交进 git。"
-            echo "这一版 Release 只含源码。使用者需自行 build.ps1，或到 README 指明的链接取 DLL。" > out/BUILD-FROM-SOURCE.txt
-          fi
-          if [ -d assets ]; then cp -r assets out/; fi
-          ls -la out
+          $dest = "tools\bepinex-payload"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "bepinex.zip"
+          Invoke-WebRequest -Uri $env:BEPINEX_URL -OutFile $zip
+          $out = Join-Path $env:RUNNER_TEMP "bepinex-extract"
+          Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
+          # 官方 zip 顶层就是 BepInEx/ 加几个加载器文件，整体搬到我们的 payload 目录
+          Get-ChildItem $out -Force | ForEach-Object {
+            Copy-Item $_.FullName -Destination $dest -Recurse -Force
+          }
+          Write-Host "payload staged:"
+          Get-ChildItem $dest -Force | Select-Object Name, Length | Format-Table
+
+      - name: Package drop-in zip
+        shell: pwsh
+        run: |
+          .\package.ps1 -SkipBuild -Version "${{ steps.ver.outputs.version }}"
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: out/**
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
           generate_release_notes: true
           body: |
             ## N.E.K.O-SP2-Bridge ${{ github.ref_name }}
@@ -60,14 +85,15 @@ jobs:
 
             **只读。** 不发控制指令、不动操纵面、不碰油门。模组只提供 `GET` 接口。
 
-            ### 安装
+            ### 安装（解压即用）
 
-            1. 先装 **BepInEx 5（Mono x64）** 到游戏根目录
-            2. 把 `Sp2Bridge.dll` 放进 `BepInEx/plugins/N.E.K.O-SP2-Bridge/`
+            1. 下载下面的 `N.E.K.O-SP2-Bridge-v*-win-x64.zip`
+            2. **把 zip 里的东西全部解压到游戏根目录**（和 `SimplePlanes 2.exe` 同级）
             3. 启动游戏，访问 <http://127.0.0.1:21580/ping>
 
-            > 本 Release 由 CI 打包源码；`Sp2Bridge.dll` 需要在本机用 `build.ps1` 编译
-            > （它引用游戏本体的程序集，无法在 CI 里构建）。
+            > zip 里**已经带了 BepInEx 5.4.23.5（Mono x64）**，不用另外下载。
+            > 已经装过 BepInEx 的话，只需 `BepInEx\plugins\N.E.K.O-SP2-Bridge\`。
+            > 校验和见 `SHA256SUMS.txt`。
 
             ### 实测环境
 
