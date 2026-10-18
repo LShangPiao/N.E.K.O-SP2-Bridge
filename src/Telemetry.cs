@@ -905,15 +905,33 @@ namespace NekoSp2Bridge
                 {
                     continue;
                 }
+                // 引擎相关的 MonoBehaviour 有好几种：真引擎是 JetEngineScript
+                // （有 IsActivated），其余 JetEngineComponent(s)Script / EngineNozzleScript
+                // 只是几何/喷口/视觉子件。不把它们算成引擎，否则一台发动机能被报成 8 台。
+                string compType = component.GetType().Name;
+                if (compType.EndsWith("ComponentsScript", StringComparison.Ordinal)
+                    || compType.EndsWith("ComponentScript", StringComparison.Ordinal)
+                    || compType.EndsWith("NozzleScript", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
                 JsonObj engine = new JsonObj();
-                engine.Set("index", i);
+                // 过滤过子组件，所以编号要按结果集重新排，不能直接用循环下标 i
+                engine.Set("index", list.Count);
 
-                string name = Reflect.GetString(component, "Name", "DisplayName", "PartName");
-                engine.Set("name", name != null ? name : component.name);
-                engine.Set("type", GuessEngineType(component.GetType().Name));
-
-                bool? running = Reflect.GetBool(component, "Running", "IsRunning", "IsOn", "Ignited", "Enabled");
+                // 实机 probe（v0.7.8.103）确认：开关状态的真名是 IsActivated。
+                // 旧的 Running / IsRunning / IsOn / Ignited 一个都不存在 ——
+                // 而候选名写错不会报错，只会静默返回 null，于是插件把"没读到"
+                // 当成"停车了"，在满油门爬升时误报"发动机全部停车"。
+                bool? running = Reflect.GetBool(
+                    component, "IsActivated", "EngineRunning", "Running", "IsRunning", "IsOn", "Ignited");
                 engine.SetIfNotNull("running", running);
+
+                float? thrust = Reflect.GetFloat(
+                    component, "_thrustCurrent", "CurrentThrust", "ThrustCurrent", "Thrust");
+                engine.SetIfNotNull("thrust", thrust);
+
                 float? throttle = Reflect.GetFloat(component, "Throttle", "ThrottleInput", "ThrottlePercent");
                 engine.SetIfNotNull("throttle", throttle);
                 float? rpm = Reflect.GetFloat(component, "Rpm", "RPM", "Revolutions");

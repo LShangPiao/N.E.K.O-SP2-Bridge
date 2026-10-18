@@ -41,7 +41,7 @@ namespace NekoSp2Bridge
     {
         public const string PluginGuid = "top.xhth.neko.sp2-bridge";
         public const string ModName = "N.E.K.O-SP2-Bridge";
-        public const string PluginVersion = "0.1.1";
+        public const string PluginVersion = "0.2.0";
 
         private static GameObject runnerObject;
 
